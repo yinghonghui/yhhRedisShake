@@ -306,18 +306,18 @@ func (ds *DbSyncer) sendTargetCommand(c redigo.Conn) {
 				log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
 					ds.id, conf.Options.Id, err.Error())
 			}
-			//if cacheItem.Cmd == "psetex" {
-			//	keyByte := cacheItem.Args[0].([]byte)
-			//	string_slice := strings.Split(string(keyByte), "|")
-			//	if len(string_slice) == 2 {
-			//		i, err := strconv.ParseInt(string_slice[1], 10, 64)
-			//		if err == nil {
-			//			t7 := time.Now().UnixNano() / 1e6
-			//			t8 := t7 - i
-			//			log.Warnf("key %s cost time %d", string(keyByte),t8)
-			//		}
-			//	}
-			//}
+			if cacheItem.Cmd == "psetex" {
+				keyByte := cacheItem.Args[0].([]byte)
+				string_slice := strings.Split(string(keyByte), "|")
+				if len(string_slice) == 2 {
+					i, err := strconv.ParseInt(string_slice[1], 10, 64)
+					if err == nil {
+						t7 := time.Now().UnixNano() / 1e6
+						t8 := t7 - i
+						log.Warnf("key %s cost time %d", string(keyByte), t8)
+					}
+				}
+			}
 
 			// print debug log of send command
 			if conf.Options.LogLevel == utils.LogLevelDebug {
