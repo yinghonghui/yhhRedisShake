@@ -15,6 +15,9 @@ import (
 	"runtime/debug"
 	"syscall"
 	"time"
+	run "yhhRedisShake/src/redis-shake"
+	utils "yhhRedisShake/src/redis-shake/common"
+	conf "yhhRedisShake/src/redis-shake/configure"
 
 	"redis-shake/pkg/libs/log"
 	"redis-shake/redis-shake"
@@ -81,7 +84,7 @@ func main() {
 	}
 
 	// verify parameters
-	if err = SanitizeOptions(*tp); err != nil {
+	if err := SanitizeOptions(*tp); err != nil {
 		crash(fmt.Sprintf("Conf.Options check failed: %s", err.Error()), -4)
 	}
 
