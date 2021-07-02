@@ -212,6 +212,8 @@ func (ds *DbSyncer) parseSourceCommand(reader *bufio.Reader) {
 					log.Debugf("DbSyncer[%d] ignore command[%v]", ds.id, sCmd)
 					continue
 				}
+			} else {
+				continue
 			}
 
 			newArgv, reject = filter.HandleFilterKeyWithCommand(sCmd, argv)
@@ -262,7 +264,7 @@ func (ds *DbSyncer) sendTargetCommand(c redigo.Conn) {
 	var bs string       // barrier status
 	var flushStatus int // need a barrier?
 
-	// cache the batch oplog
+	// cache the batch oplog 操作日志
 	cachedTunnel := make([]cmdDetail, 0, conf.Options.SenderCount+1)
 	checkpointRunId := fmt.Sprintf("%s-%s", ds.source, utils.CheckpointRunId)
 	checkpointVersion := fmt.Sprintf("%s-%s", ds.source, utils.CheckpointVersion)
@@ -328,6 +330,7 @@ func (ds *DbSyncer) sendTargetCommand(c redigo.Conn) {
 				log.Debugf("DbSyncer[%d] send command[%v]: [%s %v]", ds.id, sendId.Get(), cacheItem.Cmd,
 					strArgv)
 			}
+
 		}
 
 		if needBatch {

@@ -15,9 +15,6 @@ import (
 	"runtime/debug"
 	"syscall"
 	"time"
-	run "yhhRedisShake/src/redis-shake"
-	utils "yhhRedisShake/src/redis-shake/common"
-	conf "yhhRedisShake/src/redis-shake/configure"
 
 	"redis-shake/pkg/libs/log"
 	"redis-shake/redis-shake"
