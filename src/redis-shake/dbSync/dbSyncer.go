@@ -284,5 +284,5 @@ func (ds *DbSyncer) Del() {
 	// sync increment
 	base.Status = "incr"
 	close(ds.WaitFull)
-	ds.syncCommand(reader, ds.target, conf.Options.TargetAuthType, ds.targetPassword, conf.Options.TargetTLSEnable, dbid)
+	ds.syncDelCommand(reader, ds.target, conf.Options.TargetAuthType, ds.targetPassword, conf.Options.TargetTLSEnable, dbid)
 }

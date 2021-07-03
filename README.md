@@ -20,6 +20,8 @@ The type can be one of the followings:<br>
 * **dump**: Dump RDB file from source redis.
 * **sync**: Sync data from source redis to target redis by `sync` or `psync` command. Including full synchronization and incremental synchronization.
 * **rump**: Sync data from source redis to target redis by `scan` command. Only support full synchronization. Plus, RedisShake also supports fetching data from given keys in the input file when `scan` command is not supported on the source side. This mode is usually used when `sync` and `psync` redis commands aren't supported.
+* **del**: 从源节点全量同步到数据和增量的key,会尝试对目标节点进行删除操作
+* **syncPdel**: 从源节点全量同步将数据新增到目标节点,但是增量数据的key在目标集群进行删除（对有其他数据兜底,可删除缓存的客户端服务,可以用这种方式进行无影响迁移）
 
 Please check out the `conf/redis-shake.conf` to see the detailed parameters description.<br>
 
