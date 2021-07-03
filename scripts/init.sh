@@ -4,5 +4,6 @@ export PATH=$PATH:/usr/local/go/bin
 set GOARCH=amd64
 set GOOS=linux
 export GOPROXY=https://goproxy.cn
-go build ./main.go
+go build /root/yhhRedisShake/src/redis-shake/main
+mv /root/yhhRedisShake/src/main /root/yhhRedisShake/conf/
 ./main -type=sync -conf=/tmp/RedisShake/conf/redis-shake.conf
