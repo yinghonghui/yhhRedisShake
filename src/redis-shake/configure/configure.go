@@ -94,12 +94,13 @@ const (
 	StandAloneRoleSlave  = "slave"
 	StandAloneRoleAll    = "all"
 
-	TypeDecode  = "decode"
-	TypeRestore = "restore"
-	TypeDump    = "dump"
-	TypeSync    = "sync"
-	TypeRump    = "rump"
-	TypeDel     = "del"
+	TypeDecode   = "decode"
+	TypeRestore  = "restore"
+	TypeDump     = "dump"
+	TypeSync     = "sync"
+	TypeSyncPdel = "syncPdel"
+	TypeRump     = "rump"
+	TypeDel      = "del"
 )
 
 func GetSafeOptions() Configuration {

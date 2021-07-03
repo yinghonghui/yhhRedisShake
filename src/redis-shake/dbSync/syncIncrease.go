@@ -56,6 +56,40 @@ func (ds *DbSyncer) syncCommand(reader *bufio.Reader, target []string, authType,
 	}
 }
 
+func (ds *DbSyncer) syncDelCommand(reader *bufio.Reader, target []string, authType, passwd string, tlsEnable bool, dbid int) {
+	isCluster := conf.Options.TargetType == conf.RedisTypeCluster
+	c := utils.OpenRedisConnWithTimeout(target, authType, passwd, incrSyncReadeTimeout, incrSyncReadeTimeout, isCluster, tlsEnable)
+	defer c.Close()
+
+	ds.sendBuf = make(chan cmdDetail, conf.Options.SenderCount)
+	ds.delayChannel = make(chan *delayNode, conf.Options.SenderDelayChannelSize)
+
+	// fetch source redis offset
+	go ds.fetchOffset()
+
+	// receiver target reply
+	go ds.receiveTargetReply(c)
+
+	// parse command from source redis
+	go ds.parseSourceCommand(reader)
+
+	// do send to target
+	go ds.sendTargetCommandDel(c)
+
+	// print stat
+	for lStat := ds.stat.Stat(); ; {
+		time.Sleep(time.Second)
+		nStat := ds.stat.Stat()
+		var b bytes.Buffer
+		fmt.Fprintf(&b, "DbSyncer[%d] sync: ", ds.id)
+		fmt.Fprintf(&b, " +forwardCommands=%-6d", nStat.wCommands-lStat.wCommands)
+		fmt.Fprintf(&b, " +filterCommands=%-6d", nStat.incrSyncFilter-lStat.incrSyncFilter)
+		fmt.Fprintf(&b, " +writeBytes=%d", nStat.wBytes-lStat.wBytes)
+		log.Info(b.String())
+		lStat = nStat
+	}
+}
+
 func (ds *DbSyncer) fetchOffset() {
 	if conf.Options.Psync == false {
 		log.Warnf("DbSyncer[%d] GetFakeSlaveOffset not enable when psync == false", ds.id)
@@ -302,9 +336,25 @@ func (ds *DbSyncer) sendTargetCommand(c redigo.Conn) {
 
 		ds.addSendId(&sendId, len(cachedTunnel))
 		for _, cacheItem := range cachedTunnel {
-			if err := c.Send(cacheItem.Cmd, cacheItem.Args...); err != nil {
-				log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
-					ds.id, conf.Options.Id, err.Error())
+			if cacheItem.Cmd == "unlink" || cacheItem.Cmd == "del" {
+				for i := 0; i < len(cacheItem.Args); i += 1 {
+					if err := c.Send(cacheItem.Cmd, cacheItem.Args[i]); err != nil {
+						log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+							ds.id, conf.Options.Id, err.Error())
+					}
+				}
+			} else if cacheItem.Cmd == "mset" {
+				for i := 0; i < len(cacheItem.Args); i += 2 {
+					if err := c.Send(cacheItem.Cmd, cacheItem.Args[i], cacheItem.Args[i+1]); err != nil {
+						log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+							ds.id, conf.Options.Id, err.Error())
+					}
+				}
+			} else {
+				if err := c.Send(cacheItem.Cmd, cacheItem.Args...); err != nil {
+					log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+						ds.id, conf.Options.Id, err.Error())
+				}
 			}
 			//if cacheItem.Cmd == "psetex" {
 			//	keyByte := cacheItem.Args[0].([]byte)
@@ -331,6 +381,182 @@ func (ds *DbSyncer) sendTargetCommand(c redigo.Conn) {
 					strArgv)
 			}
 
+		}
+
+		if needBatch {
+			// need send run-id?
+			if _, ok := runIdMap[lastOplog.Db]; !ok {
+				runIdMap[lastOplog.Db] = struct{}{}
+				ds.addSendId(&sendId, 2)
+				// run id
+				if err := c.Send("hset", ds.checkpointName, checkpointRunId, ds.runId); err != nil {
+					log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+						ds.id, conf.Options.Id, err.Error())
+				}
+				// version
+				if err := c.Send("hset", ds.checkpointName, checkpointVersion, utils.FcvCheckpoint.CurrentVersion); err != nil {
+					log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+						ds.id, conf.Options.Id, err.Error())
+				}
+			}
+
+			// add checkpoint
+			ds.addSendId(&sendId, 2)
+			if err := c.Send("hset", ds.checkpointName, checkpointOffset, offset); err != nil {
+				log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+					ds.id, conf.Options.Id, err.Error())
+			}
+			if err := c.Send("exec"); err != nil {
+				log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+					ds.id, conf.Options.Id, err.Error())
+			}
+		}
+
+		if err := c.Flush(); err != nil {
+			log.Panicf("DbSyncer[%d] Event:FlushFail\tId:%s\tError:%s\t",
+				ds.id, conf.Options.Id, err.Error())
+		}
+
+		// clear
+		cachedTunnel = cachedTunnel[:0]
+		cachedCount = 0
+		cachedSize = 0
+	}
+
+	for {
+		select {
+		case item := <-ds.sendBuf:
+			length := len(item.Cmd)
+			for i := range item.Args {
+				length += len(item.Args[i].([]byte))
+			}
+
+			bs, flushStatus = barrierStatus(item.Cmd, bs)
+			log.Debugf("DbSyncer[%d] command[%s] with barrier status[%v] and flush status[%v]",
+				ds.id, item.Cmd, bs, flushStatus)
+			if flushStatus == flushStatusYes {
+				// flush previous data
+				sendFunc()
+				flushStatus = flushStatusNo
+			}
+
+			// remove command when bs == barrierStatusHoldStart or barrierStatusHoldEnd
+			if bs != barrierStatusHoldStart && bs != barrierStatusHoldEnd {
+				cachedTunnel = append(cachedTunnel, item)
+				cachedCount++
+				cachedSize += uint64(length)
+
+				// update metric
+				ds.stat.wCommands.Incr()
+				ds.stat.wBytes.Add(int64(length))
+				metric.GetMetric(ds.id).AddPushCmdCount(ds.id, 1)
+				metric.GetMetric(ds.id).AddNetworkFlow(ds.id, uint64(length))
+			}
+
+		case <-ticker.C:
+			if len(ds.sendBuf) == 0 && len(cachedTunnel) > 0 {
+				flushStatus = flushStatusYes
+			} else {
+				flushStatus = flushStatusNo
+			}
+		}
+
+		if cachedCount < conf.Options.SenderCount && cachedSize < conf.Options.SenderSize && flushStatus == flushStatusNo {
+			// do not flush
+			continue
+		}
+
+		// flush cache
+		sendFunc()
+	}
+
+	log.Warnf("DbSyncer[%d] sender exit", ds.id)
+}
+
+func (ds *DbSyncer) sendTargetCommandDel(c redigo.Conn) {
+	var cachedCount uint
+	var cachedSize uint64
+	var sendId atomic2.Int64
+	var bs string       // barrier status
+	var flushStatus int // need a barrier?
+
+	// cache the batch oplog 操作日志
+	cachedTunnel := make([]cmdDetail, 0, conf.Options.SenderCount+1)
+	checkpointRunId := fmt.Sprintf("%s-%s", ds.source, utils.CheckpointRunId)
+	checkpointVersion := fmt.Sprintf("%s-%s", ds.source, utils.CheckpointVersion)
+	checkpointOffset := fmt.Sprintf("%s-%s", ds.source, utils.CheckpointOffset)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	// mark whether the given db has already send runId, no need to send run-id each time.
+	runIdMap := make(map[int]struct{})
+
+	// do send
+	sendFunc := func() {
+		length := len(cachedTunnel)
+		if length == 0 {
+			// do nothing
+			return
+		}
+
+		lastOplog := cachedTunnel[len(cachedTunnel)-1]
+		needBatch := true
+		if !ds.enableResumeFromBreakPoint || (cachedCount == 1 && lastOplog.Cmd == "ping") {
+			needBatch = false
+		}
+
+		var offset int64
+		// enable resume from break point
+		if needBatch {
+			ds.addSendId(&sendId, 1)
+
+			// the last offset
+			offset = lastOplog.Offset
+			if err := c.Send("multi"); err != nil {
+				log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+					ds.id, conf.Options.Id, err.Error())
+			}
+		}
+
+		ds.addSendId(&sendId, len(cachedTunnel))
+		for _, cacheItem := range cachedTunnel {
+			if cacheItem.Cmd == "unlink" || cacheItem.Cmd == "del" {
+				for i := 0; i < len(cacheItem.Args); i += 1 {
+					if err := c.Send("unlink", cacheItem.Args[i]); err != nil {
+						log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+							ds.id, conf.Options.Id, err.Error())
+					}
+				}
+			} else if cacheItem.Cmd == "mset" {
+				for i := 0; i < len(cacheItem.Args); i += 2 {
+					if err := c.Send("unlink", cacheItem.Args[i]); err != nil {
+						log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+							ds.id, conf.Options.Id, err.Error())
+					}
+				}
+			} else {
+				if cacheItem.Cmd == "select" {
+					if err := c.Send(cacheItem.Cmd, cacheItem.Args...); err != nil {
+						log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+							ds.id, conf.Options.Id, err.Error())
+					}
+				} else {
+					if err := c.Send("unlink", cacheItem.Args[0]); err != nil {
+						log.Panicf("DbSyncer[%d] Event:SendToTargetFail\tId:%s\tError:%s\t",
+							ds.id, conf.Options.Id, err.Error())
+					}
+				}
+			}
+			//if cacheItem.Cmd == "psetex" {
+			//	keyByte := cacheItem.Args[0].([]byte)
+			//	string_slice := strings.Split(string(keyByte), "|")
+			//	if len(string_slice) == 2 {
+			//		i, err := strconv.ParseInt(string_slice[1], 10, 64)
+			//		if err == nil {
+			//			t7 := time.Now().UnixNano() / 1e6
+			//			t8 := t7 - i
+			//			log.Warnf("key %s cost time %d", string(keyByte), t8)
+			//		}
+			//	}
+			//}
 		}
 
 		if needBatch {

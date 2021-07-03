@@ -16,7 +16,7 @@ const (
 // parse source address and target address
 func ParseAddress(tp string) error {
 	// check source
-	if tp == conf.TypeDump || tp == conf.TypeSync || tp == conf.TypeDel || tp == conf.TypeRump {
+	if tp == conf.TypeDump || tp == conf.TypeSync || tp == conf.TypeSyncPdel || tp == conf.TypeDel || tp == conf.TypeRump {
 		if err := parseAddress(tp, conf.Options.SourceAddress, conf.Options.SourceType, true); err != nil {
 			return err
 		}
@@ -27,7 +27,7 @@ func ParseAddress(tp string) error {
 	}
 
 	// check target
-	if tp == conf.TypeRestore || tp == conf.TypeSync || tp == conf.TypeDel || tp == conf.TypeRump {
+	if tp == conf.TypeRestore || tp == conf.TypeSync || tp == conf.TypeSyncPdel || tp == conf.TypeDel || tp == conf.TypeRump {
 		if err := parseAddress(tp, conf.Options.TargetAddress, conf.Options.TargetType, false); err != nil {
 			return err
 		}
@@ -143,21 +143,23 @@ func parseAddress(tp, address, redisType string, isSource bool) error {
 			// check source list legality: all master or all slave
 			addressList := strings.Split(address, AddressClusterSplitter)
 			client := OpenRedisConn(addressList, auth, password, false, tls)
-
-			// fetch master address and slave address, ignore error
-			masterAddressList, _ := GetAllClusterNode(client, conf.StandAloneRoleMaster, "address")
-			slaveAddressList, _ := GetAllClusterNode(client, conf.StandAloneRoleSlave, "address")
-			if masterAddressList != nil && slaveAddressList != nil {
-				if !CompareUnorderedList(masterAddressList, addressList) && !CompareUnorderedList(slaveAddressList, addressList) {
-					endpoint := "source"
-					if !isSource {
-						endpoint = "target"
+			// 处理集群模式让目标集群可以多个拆开
+			if !isSource {
+				// fetch master address and slave address, ignore error
+				masterAddressList, _ := GetAllClusterNode(client, conf.StandAloneRoleMaster, "address")
+				slaveAddressList, _ := GetAllClusterNode(client, conf.StandAloneRoleSlave, "address")
+				if masterAddressList != nil && slaveAddressList != nil {
+					if !CompareUnorderedList(masterAddressList, addressList) && !CompareUnorderedList(slaveAddressList, addressList) {
+						endpoint := "source"
+						if !isSource {
+							endpoint = "target"
+						}
+						return fmt.Errorf("[%s] redis address should be all masters or all slaves, master:[%v], slave[%v]",
+							endpoint, masterAddressList, slaveAddressList)
 					}
-					return fmt.Errorf("[%s] redis address should be all masters or all slaves, master:[%v], slave[%v]",
-						endpoint, masterAddressList, slaveAddressList)
 				}
-			}
 
+			}
 			// set address
 			setAddressList(isSource, address)
 		}

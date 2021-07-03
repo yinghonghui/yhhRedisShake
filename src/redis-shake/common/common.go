@@ -97,7 +97,7 @@ func ParseInfo(content []byte) map[string]string {
 }
 
 func GetTotalLink() int {
-	if conf.Options.Type == conf.TypeSync || conf.Options.Type == conf.TypeDel || conf.Options.Type == conf.TypeRump || conf.Options.Type == conf.TypeDump {
+	if conf.Options.Type == conf.TypeSync || conf.Options.Type == conf.TypeSyncPdel || conf.Options.Type == conf.TypeDel || conf.Options.Type == conf.TypeRump || conf.Options.Type == conf.TypeDump {
 		return len(conf.Options.SourceAddressList)
 	} else if conf.Options.Type == conf.TypeDecode || conf.Options.Type == conf.TypeRestore {
 		return len(conf.Options.SourceRdbInput)

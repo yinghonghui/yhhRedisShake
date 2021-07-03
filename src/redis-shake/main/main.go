@@ -110,6 +110,8 @@ func main() {
 		runner = new(run.CmdRump)
 	case conf.TypeDel:
 		runner = new(run.CmdDel)
+	case conf.TypeSyncPdel:
+		runner = new(run.CmdSyncPdel)
 	}
 
 	// create metric

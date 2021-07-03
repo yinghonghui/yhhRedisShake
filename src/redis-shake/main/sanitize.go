@@ -19,7 +19,7 @@ import (
 // sanitize options. TODO, need split
 func SanitizeOptions(tp string) error {
 	var err error
-	if tp != conf.TypeDecode && tp != conf.TypeRestore && tp != conf.TypeDump && tp != conf.TypeSync && tp != conf.TypeRump && tp != conf.TypeDel {
+	if tp != conf.TypeDecode && tp != conf.TypeRestore && tp != conf.TypeDump && tp != conf.TypeSync && tp != conf.TypeSyncPdel && tp != conf.TypeRump && tp != conf.TypeDel {
 		return fmt.Errorf("unknown type[%v]", tp)
 	}
 
@@ -85,7 +85,7 @@ func SanitizeOptions(tp string) error {
 		conf.Options.TargetRdbOutput = "output-rdb-dump"
 	}
 
-	if tp == conf.TypeDump || tp == conf.TypeSync {
+	if tp == conf.TypeDump || tp == conf.TypeSync || tp == conf.TypeSyncPdel || tp == conf.TypeDel {
 		if conf.Options.SourceRdbParallel <= 0 || conf.Options.SourceRdbParallel > len(conf.Options.SourceAddressList) {
 			conf.Options.SourceRdbParallel = len(conf.Options.SourceAddressList)
 		}
@@ -283,7 +283,7 @@ func SanitizeOptions(tp string) error {
 		conf.Options.Qps = 500000
 	}
 
-	if tp == conf.TypeRestore || tp == conf.TypeSync || tp == conf.TypeRump {
+	if tp == conf.TypeRestore || tp == conf.TypeSync || tp == conf.TypeSyncPdel || tp == conf.TypeDel || tp == conf.TypeRump {
 		// version check is useless, we only want to verify the correctness of configuration.
 		if conf.Options.TargetVersion == "" {
 			// get target redis version and set TargetReplace.
@@ -318,7 +318,7 @@ func SanitizeOptions(tp string) error {
 	}
 
 	// check version and set big_key_threshold. see #173
-	if tp == conf.TypeSync || tp == conf.TypeDel || tp == conf.TypeRump { // "tp == restore" hasn't been handled
+	if tp == conf.TypeSync || tp == conf.TypeDel || tp == conf.TypeSyncPdel || tp == conf.TypeRump { // "tp == restore" hasn't been handled
 		// fetch source version
 		for _, address := range conf.Options.SourceAddressList {
 			// single connection even if the target is cluster
@@ -344,7 +344,7 @@ func SanitizeOptions(tp string) error {
 			}*/
 
 		// set "psync = true" if the source version is >= 2.8
-		if tp == conf.TypeSync || tp == conf.TypeDel {
+		if tp == conf.TypeSync || tp == conf.TypeSyncPdel || tp == conf.TypeDel {
 			if ret := utils.CompareVersion(conf.Options.SourceVersion, "2.8", 2); ret != 1 {
 				conf.Options.Psync = true
 			} else {
@@ -379,7 +379,7 @@ func SanitizeOptions(tp string) error {
 	}
 
 	// check rdbchecksum
-	if tp == conf.TypeDump || (tp == conf.TypeSync || tp == conf.TypeRump) && conf.Options.BigKeyThreshold > 1 {
+	if tp == conf.TypeDump || (tp == conf.TypeSync || tp == conf.TypeSyncPdel || tp == conf.TypeDel || tp == conf.TypeRump) && conf.Options.BigKeyThreshold > 1 {
 		for _, address := range conf.Options.SourceAddressList {
 			check, err := utils.GetRDBChecksum(address, conf.Options.SourceAuthType,
 				conf.Options.SourcePasswordRaw, conf.Options.SourceTLSEnable)
@@ -402,7 +402,7 @@ func SanitizeOptions(tp string) error {
 
 	// enable resume from break point
 	if conf.Options.ResumeFromBreakPoint {
-		if tp != conf.TypeSync {
+		if tp != conf.TypeSync || tp != conf.TypeSyncPdel || tp != conf.TypeDel {
 			// set false if tp is not 'sync'
 			conf.Options.ResumeFromBreakPoint = false
 		}
