@@ -16,6 +16,7 @@ func RestAPI() {
 	// add below if has more
 }
 
+//
 func registerMetric() {
 	utils.HttpApi.RegisterAPI("/metric", nimo.HttpGet, func([]byte) interface{} {
 		return metric.NewMetricRest()
