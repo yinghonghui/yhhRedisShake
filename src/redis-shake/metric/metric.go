@@ -133,6 +133,7 @@ func (m *Metric) run() {
 		tick := 0
 		for range time.NewTicker(1 * time.Second).C {
 			tick++
+
 			if tick%updateInterval == 0 && conf.Options.MetricPrintLog {
 				stat := NewMetricRest()
 				if opts, err := json.Marshal(stat); err != nil {
