@@ -95,6 +95,13 @@ func (cmd CmdDel) Main() {
 	select {}
 }
 
-func (c CmdDel) GetDetailedInfo() interface{} {
-	panic("implement me")
+func (cmd *CmdDel) GetDetailedInfo() interface{} {
+	ret := make([]map[string]interface{}, len(cmd.dbSyncers))
+	for i, syncer := range cmd.dbSyncers {
+		if syncer == nil {
+			continue
+		}
+		ret[i] = syncer.GetExtraInfo()
+	}
+	return ret
 }
