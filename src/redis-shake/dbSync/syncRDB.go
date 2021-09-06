@@ -9,6 +9,7 @@ import (
 	"redis-shake/redis-shake/common"
 	"redis-shake/redis-shake/configure"
 	"redis-shake/redis-shake/filter"
+	"strings"
 	"sync"
 	"time"
 
@@ -60,6 +61,13 @@ func (ds *DbSyncer) syncRDBFile(reader *bufio.Reader, target []string, authType,
 								// 2. judge if not pass filter slot
 								ds.stat.fullSyncFilter.Incr()
 								continue
+							}
+						}
+						if conf.Options.ReplaceKey != "" {
+							arr := strings.Split(string(e.Key), ":")
+							if len(arr) >= 2 {
+								newKey := conf.Options.ReplaceKey + arr[1]
+								e.Key = []byte(newKey)
 							}
 						}
 

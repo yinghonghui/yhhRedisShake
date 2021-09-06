@@ -66,8 +66,9 @@ type Configuration struct {
 	SockFileName              string   `config:"sock.file_name"`
 	SockFileSize              uint     `config:"sock.file_size"`
 	FilterKey                 []string `config:"filter.key"` // compatible with older versions
-	FilterDB                  string   `config:"filter.db"`  // compatible with older versions
-	Rewrite                   bool     `config:"rewrite"`    // compatible with older versions < 1.6.27
+	ReplaceKey                string   `config:"replace.key"`
+	FilterDB                  string   `config:"filter.db"` // compatible with older versions
+	Rewrite                   bool     `config:"rewrite"`   // compatible with older versions < 1.6.27
 
 	/*---------------------------------------------------------*/
 	// generated variables
