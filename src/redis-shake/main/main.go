@@ -98,6 +98,7 @@ func main() {
 	// create runner
 	var runner base.Runner
 	switch *tp {
+
 	case conf.TypeDecode:
 		runner = new(run.CmdDecode)
 	case conf.TypeRestore:

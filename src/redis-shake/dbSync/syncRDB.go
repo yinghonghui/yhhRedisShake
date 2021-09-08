@@ -66,7 +66,10 @@ func (ds *DbSyncer) syncRDBFile(reader *bufio.Reader, target []string, authType,
 						if conf.Options.ReplaceKey != "" {
 							arr := strings.Split(string(e.Key), ":")
 							if len(arr) >= 2 {
-								newKey := conf.Options.ReplaceKey + arr[1]
+								newKey := conf.Options.ReplaceKey
+								for i = 1; i < len(arr); i++ {
+									newKey = newKey + ":" + arr[i]
+								}
 								e.Key = []byte(newKey)
 							}
 						}
